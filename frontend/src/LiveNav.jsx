@@ -2,20 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VOICE ENGINE — priority queue, dedup, rate-limit
-// ElevenLabs TTS replaces browser Web Speech API
+// VOICE ENGINE — priority queue, dedup, rate-limit (Web Speech API)
 // ─────────────────────────────────────────────────────────────────────────────
 const voiceQueue = [];
 let isSpeaking = false;
-let currentAudio = null;   // Currently playing Audio object (ElevenLabs)
-
-// The API base URL is handled by Vite's proxy / Vercel rewrites
-const TTS_ENDPOINT = '/api/tts/speak';
 
 function speak(message, priority = 'low') {
-  // WEB SPEECH API CHECK — commented out (replaced by ElevenLabs)
-  // if (!window.speechSynthesis) return;
-
+  if (!window.speechSynthesis) return;
   if (voiceQueue.some(q => q.text === message)) return;
   voiceQueue.push({ text: message, priority });
   voiceQueue.sort((a, b) => {
@@ -25,69 +18,23 @@ function speak(message, priority = 'low') {
   if (!isSpeaking) processQueue();
 }
 
-async function processQueue() {
+function processQueue() {
   if (!voiceQueue.length) { isSpeaking = false; return; }
   isSpeaking = true;
   const { text } = voiceQueue.shift();
-
-  // ── WEB SPEECH API — commented out ────────────────────────────────────────
-  // const utt = new SpeechSynthesisUtterance(text);
-  // utt.rate = 0.92;
-  // utt.pitch = 1.05;
-  // utt.lang = 'en-US';
-  // utt.onend = processQueue;
-  // utt.onerror = processQueue;
-  // window.speechSynthesis.speak(utt);
-
-  // ── ElevenLabs TTS — fetches MP3 from backend ─────────────────────────────
-  try {
-    const res = await fetch(TTS_ENDPOINT, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ text }),
-    });
-
-    if (res.status === 204) {
-      // API key not configured — skip silently and drain queue
-      processQueue();
-      return;
-    }
-
-    const blob   = await res.blob();
-    const url    = URL.createObjectURL(blob);
-    currentAudio = new Audio(url);
-
-    currentAudio.onended = () => {
-      URL.revokeObjectURL(url);
-      currentAudio = null;
-      processQueue();
-    };
-    currentAudio.onerror = () => {
-      URL.revokeObjectURL(url);
-      currentAudio = null;
-      processQueue();
-    };
-
-    currentAudio.play().catch(() => processQueue());
-
-  } catch {
-    // Network or fetch error — drain queue silently
-    processQueue();
-  }
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 0.92;
+  utt.pitch = 1.05;
+  utt.lang = 'en-US';
+  utt.onend = processQueue;
+  utt.onerror = processQueue;
+  window.speechSynthesis.speak(utt);
 }
 
 function stopSpeech() {
   voiceQueue.length = 0;
   isSpeaking = false;
-
-  // ── WEB SPEECH API cancel — commented out ─────────────────────────────────
-  // window.speechSynthesis?.cancel();
-
-  // ── ElevenLabs: stop current audio and release blob URL ───────────────────
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
-  }
+  window.speechSynthesis?.cancel();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
 import './index.css';
 import LiveNav from './LiveNav';
@@ -12,7 +12,6 @@ function App() {
   const [error, setError]         = useState(null);
   const [speaking, setSpeaking]   = useState(false);
   const fileInputRef = useRef(null);
-  const audioRef     = useRef(null);   // ElevenLabs <audio> element ref
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
   const handleDragOver = (e) => {
@@ -74,38 +73,23 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // ── WEB SPEECH API — commented out (replaced by ElevenLabs) ───────────────
-  // const speakText = (text) => {
-  //   if (!window.speechSynthesis) return;
-  //   window.speechSynthesis.cancel();
-  //   const utt = new SpeechSynthesisUtterance(text);
-  //   utt.rate = 0.95;
-  //   utt.pitch = 1.0;
-  //   utt.lang = 'en-US';
-  //   utt.onstart = () => setSpeaking(true);
-  //   utt.onend   = () => setSpeaking(false);
-  //   utt.onerror = () => setSpeaking(false);
-  //   window.speechSynthesis.speak(utt);
-  // };
-
-  // const stopSpeech = () => {
-  //   window.speechSynthesis?.cancel();
-  //   setSpeaking(false);
-  // };
-
-  // ── ElevenLabs audio playback ──────────────────────────────────────────────
-  const stopSpeech = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    setSpeaking(false);
+  // ── Web Speech API ─────────────────────────────────────────────────────────
+  const speakText = (text) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.95;
+    utt.pitch = 1.0;
+    utt.lang = 'en-US';
+    utt.onstart = () => setSpeaking(true);
+    utt.onend   = () => setSpeaking(false);
+    utt.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(utt);
   };
 
-  const playAudio = () => {
-    if (!audioRef.current) return;
-    setSpeaking(true);
-    audioRef.current.play();
+  const stopSpeech = () => {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
   };
 
   // ── Download helpers ───────────────────────────────────────────────────────
@@ -287,36 +271,22 @@ function App() {
                 </div>
               )}
 
-              {/* Audio guide — ElevenLabs TTS */}
+              {/* Audio guide — Web Speech API */}
               {activeTab === 'audio' && (
                 <div className="output-card audio-card">
                   <div className="audio-icon">🎙️</div>
                   <p className="audio-label">Navigation Audio Guide</p>
                   <p className="audio-note">
-                    Powered by ElevenLabs AI voice — high-quality MP3 audio.
+                    Powered by your browser's built-in speech engine — no API key needed.
                   </p>
 
-                  {result.tts_audio_b64 ? (
+                  {result.tts_text ? (
                     <>
-                      {/* Hidden <audio> element driven by ElevenLabs base64 MP3 */}
-                      <audio
-                        ref={audioRef}
-                        src={result.tts_audio_b64}
-                        onEnded={() => setSpeaking(false)}
-                        onError={() => setSpeaking(false)}
-                        style={{ display: 'none' }}
-                      />
-                      {/* Visible player controls */}
-                      <audio
-                        controls
-                        src={result.tts_audio_b64}
-                        className="audio-player"
-                        aria-label="Navigation audio guide"
-                      />
+                      <p className="audio-script">{result.tts_text}</p>
                       <div className="audio-controls">
                         <button
                           className="btn btn-primary"
-                          onClick={playAudio}
+                          onClick={() => speakText(result.tts_text)}
                           disabled={speaking}
                         >
                           {speaking ? '🔊 Speaking…' : '▶ Play'}
@@ -329,27 +299,7 @@ function App() {
                       </div>
                     </>
                   ) : (
-                    /* WEB SPEECH API fallback — commented out */
-                    // result.tts_text ? (
-                    //   <div className="audio-controls">
-                    //     <button onClick={() => window.speechSynthesis.speak(
-                    //       Object.assign(new SpeechSynthesisUtterance(result.tts_text), { rate: 0.95 })
-                    //     )}>▶ Play (browser)</button>
-                    //   </div>
-                    // ) :
-                    <div className="audio-error">
-                      <p className="audio-note" style={{ color: '#f87171' }}>
-                        ⚠️ Audio not available
-                      </p>
-                      {result.tts_error && (
-                        <p className="audio-note" style={{ fontSize: '0.8rem', opacity: 0.75 }}>
-                          {result.tts_error}
-                        </p>
-                      )}
-                      <p className="audio-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
-                        Visit <code>/api/tts/test</code> on your backend to diagnose.
-                      </p>
-                    </div>
+                    <p className="audio-note">No navigation text returned.</p>
                   )}
                 </div>
               )}
@@ -361,7 +311,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>FloorSense AI · Built with FastAPI + React · Gemini Vision · ElevenLabs TTS</p>
+        <p>FloorSense AI · Built with FastAPI + React · Gemini Vision · Web Speech API</p>
       </footer>
     </div>
   );

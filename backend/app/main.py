@@ -7,7 +7,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import pipeline, live_nav, tts, health
+from app.routers import pipeline, live_nav, health
 
 # In development: http://localhost:5173
 # In production: set ALLOWED_ORIGINS to your Vercel URL in Render dashboard
@@ -29,7 +29,6 @@ app.add_middleware(
 
 app.include_router(pipeline.router)
 app.include_router(live_nav.router)
-app.include_router(tts.router)
 app.include_router(health.router)
 
 
