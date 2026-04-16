@@ -29,4 +29,9 @@ app.include_router(pipeline.router)
 
 @app.get("/")
 async def root():
-    return {"
+    return {"message": "FloorSense AI backend is running"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
