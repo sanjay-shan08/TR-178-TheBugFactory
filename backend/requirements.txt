@@ -7,4 +7,12 @@ networkx
 pillow
 jinja2
 httpx
-openai
+
+# Google AI — Gemini Vision (floor plan parsing)
+google-genai
+
+# Live Navigation modules
+# NOTE: Large packages (~1GB combined). Set DETECTION_MODE=mock on free Render tier.
+# Set DETECTION_MODE=real on a paid instance with 2GB+ RAM.
+ultralytics
+easyocr

@@ -1,15 +1,20 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import './index.css';
+import LiveNav from './LiveNav';
 
 function App() {
-  const [file, setFile] = useState(null);
+  const [mode, setMode]           = useState('floorplan');
+  const [file, setFile]           = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  const [result, setResult]       = useState(null);
   const [activeTab, setActiveTab] = useState('tactile');
-  const [error, setError] = useState(null);
+  const [error, setError]         = useState(null);
+  const [speaking, setSpeaking]   = useState(false);
   const fileInputRef = useRef(null);
+  const audioRef     = useRef(null);   // ElevenLabs <audio> element ref
 
+  // ── Drag & drop ────────────────────────────────────────────────────────────
   const handleDragOver = (e) => {
     e.preventDefault();
     e.currentTarget.classList.add('drag-over');
@@ -33,12 +38,10 @@ function App() {
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
-    if (selected) {
-      setFile(selected);
-      setError(null);
-    }
+    if (selected) { setFile(selected); setError(null); }
   };
 
+  // ── Pipeline submit ────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     setIsLoading(true);
     setResult(null);
@@ -47,14 +50,13 @@ function App() {
       let response;
       if (file) {
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append('file', file);
         response = await axios.post('/api/pipeline/process', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else {
         response = await axios.post('/api/pipeline/process-mock?source=n1&target=n4');
       }
-
       setResult(response.data);
       setActiveTab('tactile');
     } catch (err) {
@@ -68,11 +70,57 @@ function App() {
     setFile(null);
     setResult(null);
     setError(null);
+    stopSpeech();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // ── WEB SPEECH API — commented out (replaced by ElevenLabs) ───────────────
+  // const speakText = (text) => {
+  //   if (!window.speechSynthesis) return;
+  //   window.speechSynthesis.cancel();
+  //   const utt = new SpeechSynthesisUtterance(text);
+  //   utt.rate = 0.95;
+  //   utt.pitch = 1.0;
+  //   utt.lang = 'en-US';
+  //   utt.onstart = () => setSpeaking(true);
+  //   utt.onend   = () => setSpeaking(false);
+  //   utt.onerror = () => setSpeaking(false);
+  //   window.speechSynthesis.speak(utt);
+  // };
+
+  // const stopSpeech = () => {
+  //   window.speechSynthesis?.cancel();
+  //   setSpeaking(false);
+  // };
+
+  // ── ElevenLabs audio playback ──────────────────────────────────────────────
+  const stopSpeech = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setSpeaking(false);
+  };
+
+  const playAudio = () => {
+    if (!audioRef.current) return;
+    setSpeaking(true);
+    audioRef.current.play();
+  };
+
+  // ── Download helpers ───────────────────────────────────────────────────────
+  const downloadBlob = (content, filename, mime) => {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="app">
+
+      {/* Header */}
       <header className="app-header">
         <div className="header-badge">AI-Powered Accessibility</div>
         <h1 className="app-title">FloorSense <span className="title-accent">AI</span></h1>
@@ -81,8 +129,32 @@ function App() {
         </p>
       </header>
 
+      {/* Mode switcher */}
+      <div className="mode-switcher" role="tablist" aria-label="App mode">
+        {[
+          { key: 'floorplan', label: '🗺️  Floor Plan Analysis' },
+          { key: 'livenav',   label: '📷  Live Navigation' },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={mode === key}
+            className={`mode-btn ${mode === key ? 'mode-active' : ''}`}
+            onClick={() => { setMode(key); handleReset(); }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Main */}
       <main className="app-main">
-        {!result ? (
+
+        {/* ── Live Navigation mode ── */}
+        {mode === 'livenav' && <LiveNav />}
+
+        {/* ── Floor Plan mode ── */}
+        {mode === 'floorplan' && !result && (
           <div className="upload-section">
             <div
               className="drop-zone"
@@ -112,7 +184,7 @@ function App() {
               ) : (
                 <>
                   <p className="drop-primary">Drag & drop your floor plan here</p>
-                  <p className="drop-secondary">or click to browse — PNG, JPG, PDF supported</p>
+                  <p className="drop-secondary">or click to browse — PNG, JPG supported</p>
                 </>
               )}
             </div>
@@ -131,16 +203,17 @@ function App() {
                     <span className="spinner" aria-hidden="true" />
                     Processing…
                   </span>
-                ) : (
-                  '⚡ Run Pipeline'
-                )}
+                ) : '⚡ Run Pipeline'}
               </button>
               <p className="demo-note">
                 No file? Click <strong>Run Pipeline</strong> to test with a mock floor plan.
               </p>
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* ── Results ── */}
+        {mode === 'floorplan' && result && (
           <div className="results-section">
             <div className="results-header">
               <h2 className="results-title">Pipeline Complete</h2>
@@ -150,11 +223,20 @@ function App() {
               <button className="btn btn-ghost" onClick={handleReset}>← New Floor Plan</button>
             </div>
 
+            {/* Vision API error banner */}
+            {result.vision_error && (
+              <div className="api-error-banner" role="alert">
+                <strong>⚠️ Floor plan used mock data</strong>
+                <p>{result.vision_error}</p>
+              </div>
+            )}
+
+            {/* Output tabs */}
             <div className="tabs" role="tablist" aria-label="Output formats">
               {[
-                { key: 'tactile', label: '🖐 Tactile SVG' },
-                { key: 'screen', label: '♿ Screen Reader' },
-                { key: 'audio', label: '🔊 Audio Guide' },
+                { key: 'tactile', label: '🖐 Tactile SVG'    },
+                { key: 'screen',  label: '♿ Screen Reader'   },
+                { key: 'audio',   label: '🔊 Audio Guide'     },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -169,6 +251,8 @@ function App() {
             </div>
 
             <div className="tab-panel" role="tabpanel">
+
+              {/* Tactile SVG */}
               {activeTab === 'tactile' && (
                 <div className="output-card">
                   <div
@@ -178,21 +262,14 @@ function App() {
                   />
                   <button
                     className="btn btn-secondary"
-                    onClick={() => {
-                      const blob = new Blob([result.tactile_svg], { type: 'image/svg+xml' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'tactile_map.svg';
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
+                    onClick={() => downloadBlob(result.tactile_svg, 'tactile_map.svg', 'image/svg+xml')}
                   >
                     ↓ Download SVG
                   </button>
                 </div>
               )}
 
+              {/* Screen reader HTML */}
               {activeTab === 'screen' && (
                 <div className="output-card">
                   <iframe
@@ -203,40 +280,88 @@ function App() {
                   />
                   <button
                     className="btn btn-secondary"
-                    onClick={() => {
-                      const blob = new Blob([result.aria_html], { type: 'text/html' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'accessible_map.html';
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
+                    onClick={() => downloadBlob(result.aria_html, 'accessible_map.html', 'text/html')}
                   >
                     ↓ Download HTML
                   </button>
                 </div>
               )}
 
+              {/* Audio guide — ElevenLabs TTS */}
               {activeTab === 'audio' && (
                 <div className="output-card audio-card">
                   <div className="audio-icon">🎙️</div>
-                  <p className="audio-label">Audio guide generated via OpenAI TTS</p>
+                  <p className="audio-label">Navigation Audio Guide</p>
                   <p className="audio-note">
-                    {result.tts_audio_url
-                      ? 'TTS output is ready. In production this would stream an MP3.'
-                      : 'No audio URL returned.'}
+                    Powered by ElevenLabs AI voice — high-quality MP3 audio.
                   </p>
-                  <p className="audio-url">{result.tts_audio_url}</p>
+
+                  {result.tts_audio_b64 ? (
+                    <>
+                      {/* Hidden <audio> element driven by ElevenLabs base64 MP3 */}
+                      <audio
+                        ref={audioRef}
+                        src={result.tts_audio_b64}
+                        onEnded={() => setSpeaking(false)}
+                        onError={() => setSpeaking(false)}
+                        style={{ display: 'none' }}
+                      />
+                      {/* Visible player controls */}
+                      <audio
+                        controls
+                        src={result.tts_audio_b64}
+                        className="audio-player"
+                        aria-label="Navigation audio guide"
+                      />
+                      <div className="audio-controls">
+                        <button
+                          className="btn btn-primary"
+                          onClick={playAudio}
+                          disabled={speaking}
+                        >
+                          {speaking ? '🔊 Speaking…' : '▶ Play'}
+                        </button>
+                        {speaking && (
+                          <button className="btn btn-ghost" onClick={stopSpeech}>
+                            ⏹ Stop
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    /* WEB SPEECH API fallback — commented out */
+                    // result.tts_text ? (
+                    //   <div className="audio-controls">
+                    //     <button onClick={() => window.speechSynthesis.speak(
+                    //       Object.assign(new SpeechSynthesisUtterance(result.tts_text), { rate: 0.95 })
+                    //     )}>▶ Play (browser)</button>
+                    //   </div>
+                    // ) :
+                    <div className="audio-error">
+                      <p className="audio-note" style={{ color: '#f87171' }}>
+                        ⚠️ Audio not available
+                      </p>
+                      {result.tts_error && (
+                        <p className="audio-note" style={{ fontSize: '0.8rem', opacity: 0.75 }}>
+                          {result.tts_error}
+                        </p>
+                      )}
+                      <p className="audio-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
+                        Visit <code>/api/tts/test</code> on your backend to diagnose.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
+
             </div>
           </div>
         )}
+
       </main>
 
       <footer className="app-footer">
-        <p>FloorSense AI · Phase 1–3 Demo · Built with FastAPI + React</p>
+        <p>FloorSense AI · Built with FastAPI + React · Gemini Vision · ElevenLabs TTS</p>
       </footer>
     </div>
   );
