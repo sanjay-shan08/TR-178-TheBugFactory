@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Accessible Floor Plan Map</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; background: #fafafa; color: #111; }
+        h1 { color: #222; }
+        .node-card { border: 1px solid #ccc; background: white; padding: 1.5rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .node-card:focus { outline: 4px solid #005fcc; box-shadow: 0 4px 12px rgba(0,95,204,0.3); }
+        .low-confidence { border-left: 5px solid #eab308; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+        a.connection { display: inline-block; padding: 0.2rem 0.5rem; background: #eee; border-radius: 4px; text-decoration: none; color: #005fcc; font-weight: bold; margin-bottom: 0.5rem; }
+        a.connection:focus { outline: 3px solid #005fcc; background: #e0f0ff; }
+    </style>
+</head>
+<body>
+    <h1>Floor Plan Explorer</h1>
+    <p class="sr-only">Use the Tab key to navigate between rooms. Press Enter to activate links.</p>
+    
+    <div role="region" aria-label="Rooms and Locations">
+        {% for node_id, neighbors in adjacency.items() %}
+            <div tabindex="0" class="node-card {% if graph_nodes[node_id].get('confidence', 1.0) < 0.8 %}low-confidence{% endif %}" id="node-{{ node_id }}" aria-labelledby="heading-{{ node_id }}">
+                <h2 id="heading-{{ node_id }}">{{ graph_nodes[node_id].get('label', 'Unknown') }}</h2>
+                <p><strong>Type:</strong> {{ graph_nodes[node_id].get('node_type', '') }}</p>
+                {% if graph_nodes[node_id].get('confidence', 1.0) < 0.8 %}
+                    <p aria-live="polite"><em>Warning: AI confidence for this detection is low. Proceed with caution.</em></p>
+                {% endif %}
+                <h3>Connections</h3>
+                <ul>
+                    {% for neighbor in neighbors %}
+                        <li>
+                            <a class="connection" href="#node-{{ neighbor.id }}">
+                                Go to {{ neighbor.label }}
+                            </a>
+                            <span class="sr-only">, distance is </span>
+                            <span aria-hidden="true" style="font-size: 0.9em; color: #666;">({{ neighbor.distance }}m)</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endfor %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.app-header {
+  text-align: center;
+  padding: 3rem 0 2rem;
+  border-bottom: 1px solid #2d3748;
+  margin-bottom: 2rem;
+}
+
+.app-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #63b3ed;
+  margin-bottom: 0.5rem;
+}
+
+.app-header p {
+  color: #a0aec0;
+  font-size: 1.1rem;
+}
+
+.app-main {
+  text-align: center;
+  padding: 2rem;
+  color: #718096;
+}

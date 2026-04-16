@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {{ width }} {{ height }}">
+  <!-- BANA standard: High contrast, thick lines -->
+  <style>
+    .room { fill: none; stroke: black; stroke-width: 5px; }
+    .door { fill: white; stroke: black; stroke-width: 2px; }
+    .label { font-family: Arial, sans-serif; font-size: 20px; fill: black; font-weight: bold; }
+    .braille { font-family: Braille, sans-serif; font-size: 24px; fill: black; }
+    .low-confidence { stroke-dasharray: 10, 10; stroke: #333; }
+  </style>
+  <rect width="100%" height="100%" fill="white" />
+
+  {% for room in nodes %}
+    {% if room.width and room.height %}
+    <rect
+       x="{{ room.x - room.width/2 }}"
+       y="{{ room.y - room.height/2 }}"
+       width="{{ room.width }}"
+       height="{{ room.height }}"
+       class="room {{ 'low-confidence' if room.confidence < 0.8 else '' }}" />
+    <text x="{{ room.x }}" y="{{ room.y }}" class="label" text-anchor="middle" dominant-baseline="middle">
+      {{ room.label }}
+    </text>
+    {% endif %}
+  {% endfor %}
+</svg>

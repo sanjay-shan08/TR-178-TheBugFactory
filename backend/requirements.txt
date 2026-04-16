@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+python-dotenv
+networkx
+pillow
+jinja2
+httpx
+openai

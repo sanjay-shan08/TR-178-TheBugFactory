@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: floorsense-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false          # Set this manually in Render dashboard
+      - key: ALLOWED_ORIGINS
+        sync: false          # Set to your Vercel URL, e.g. https://floorsense.vercel.app
