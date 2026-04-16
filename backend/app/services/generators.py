@@ -1,5 +1,4 @@
 import os
-import httpx
 from jinja2 import Environment, FileSystemLoader
 from typing import List, Dict
 from app.models.schemas import FloorPlanData, Node, Edge
@@ -8,10 +7,6 @@ from app.services.graph_engine import GraphEngine
 current_dir = os.path.dirname(__file__)
 template_dir = os.path.join(current_dir, "..", "templates")
 env = Environment(loader=FileSystemLoader(template_dir))
-
-# ── ElevenLabs config ─────────────────────────────────────────────────────────
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel
-ELEVENLABS_MODEL    = "eleven_turbo_v2"   # Fastest, lowest latency
 
 
 def generate_tactile_svg(data: FloorPlanData) -> str:
@@ -28,7 +23,7 @@ def generate_aria_html(engine: GraphEngine) -> str:
 
 
 def generate_navigation_text(path_details: List[Dict]) -> str:
-    """Builds the plain-text navigation script (used as input for ElevenLabs TTS)."""
+    """Builds the plain-text navigation script — spoken by the browser Web Speech API."""
     script = "Navigation instructions. "
     for i, step in enumerate(path_details):
         if i == 0:
@@ -43,40 +38,6 @@ def generate_navigation_text(path_details: List[Dict]) -> str:
     script += "You have reached your destination."
     return script
 
-
-def generate_audio_elevenlabs(text: str) -> bytes:
-    """
-    Calls ElevenLabs TTS API and returns MP3 audio bytes.
-    Falls back to empty bytes if ELEVENLABS_API_KEY is not set.
-    """
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key or api_key == "your_elevenlabs_api_key_here":
-        return b""
-
-    try:
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
-        headers = {
-            "xi-api-key":   api_key,
-            "Content-Type": "application/json",
-            "Accept":       "audio/mpeg",
-        }
-        payload = {
-            "text":     text,
-            "model_id": ELEVENLABS_MODEL,
-            "voice_settings": {
-                "stability":        0.55,
-                "similarity_boost": 0.80,
-                "style":            0.0,
-                "use_speaker_boost": True,
-            },
-        }
-        response = httpx.post(url, headers=headers, json=payload, timeout=20.0)
-        response.raise_for_status()
-        return response.content
-
-    except Exception as e:
-        print(f"[ElevenLabs] Error: {e}")
-        return b""
 
 
 def mock_vision_parse() -> FloorPlanData:

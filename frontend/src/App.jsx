@@ -311,7 +311,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>FloorSense AI · Built with FastAPI + React · Gemini Vision · Web Speech API</p>
+        <p>FloorSense AI · Built with FastAPI + React · Groq Vision · Web Speech API</p>
       </footer>
     </div>
   );

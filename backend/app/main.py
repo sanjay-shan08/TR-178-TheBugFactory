@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 
 # ⚠️  load_dotenv() MUST run before any app imports so module-level os.getenv()
-# calls in generators.py (ELEVENLABS_VOICE_ID, etc.) pick up .env values.
+# calls in generators.py pick up .env values before modules are initialised.
 load_dotenv()
 
 from fastapi import FastAPI
