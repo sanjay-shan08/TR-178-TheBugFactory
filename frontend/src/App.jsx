@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import axios from 'axios';
+import api from './api';
 import './index.css';
 import LiveNav from './LiveNav';
 import VoiceBot from './VoiceBot';
@@ -52,11 +52,11 @@ function App() {
       if (file) {
         const formData = new FormData();
         formData.append('file', file);
-        response = await axios.post('/api/pipeline/process', formData, {
+        response = await api.post('/api/pipeline/process', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       } else {
-        response = await axios.post('/api/pipeline/process-mock?source=n1&target=n4');
+        response = await api.post('/api/pipeline/process-mock?source=n1&target=n4');
       }
       setResult(response.data);
       setActiveTab('tactile');

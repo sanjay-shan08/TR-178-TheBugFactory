@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import axios from 'axios';
+import api from './api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VOICE ENGINE — priority queue, dedup, rate-limit (Web Speech API)
@@ -214,7 +214,7 @@ const LiveNav = forwardRef(function LiveNav(_, ref) {
       const frame = captureFrame();
       if (frame) {
         try {
-          const res = await axios.post('/api/live-nav/detect', { image: frame });
+          const res = await api.post('/api/live-nav/detect', { image: frame });
           const { detections: dets, frame_width: fw, frame_height: fh } = res.data;
 
           // Emergency mode: only care about exits/stairs
@@ -316,7 +316,7 @@ const LiveNav = forwardRef(function LiveNav(_, ref) {
     setOcrLoading(true);
     setOcrText('');
     try {
-      const res  = await axios.post('/api/live-nav/ocr', { image: frame });
+      const res  = await api.post('/api/live-nav/ocr', { image: frame });
       const text = res.data.combined;
       setOcrText(text || 'No text detected');
       if (text) speak(text, 'medium');

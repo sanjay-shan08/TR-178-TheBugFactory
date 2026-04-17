@@ -9,10 +9,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import pipeline, live_nav, health, voice_control
 
-# In development: http://localhost:5173
-# In production: set ALLOWED_ORIGINS to your Vercel URL in Render dashboard
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
-
 app = FastAPI(
     title="FloorSense AI",
     description="AI-powered floor plan accessibility engine",
@@ -21,8 +17,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
