@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import axios from 'axios';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-export default function LiveNav() {
+const LiveNav = forwardRef(function LiveNav(_, ref) {
   const videoRef      = useRef(null);
   const canvasRef     = useRef(null);  // hidden capture canvas
   const overlayRef    = useRef(null);  // visible bounding-box canvas
@@ -374,6 +374,11 @@ export default function LiveNav() {
 
   useEffect(() => () => handleStop(), []);
 
+  // Expose start() so App.jsx can call it via voice command
+  useImperativeHandle(ref, () => ({
+    start: () => { if (!active) handleStart(); },
+  }));
+
   const headingLabel = heading !== null ? COMPASS[Math.round(heading / 45) % 8] : '—';
   const headingDeg   = heading !== null ? `${heading}°` : '—';
 
@@ -529,4 +534,6 @@ export default function LiveNav() {
 
     </div>
   );
-}
+});
+
+export default LiveNav;

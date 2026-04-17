@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import axios from 'axios';
 import './index.css';
 import LiveNav from './LiveNav';
+import VoiceBot from './VoiceBot';
 
 function App() {
   const [mode, setMode]           = useState('floorplan');
@@ -11,7 +12,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('tactile');
   const [error, setError]         = useState(null);
   const [speaking, setSpeaking]   = useState(false);
-  const fileInputRef = useRef(null);
+  const fileInputRef  = useRef(null);
+  const liveNavRef    = useRef(null);
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
   const handleDragOver = (e) => {
@@ -92,6 +94,49 @@ function App() {
     setSpeaking(false);
   };
 
+  const handleVoiceCommand = (action, transcript) => {
+    console.log("🗣️ Voice Command:", action, "| Transcript:", transcript);
+    switch (action) {
+      case 'switch_to_livenav':
+        setMode('livenav');
+        handleReset();
+        // Give React a tick to mount LiveNav, then start it
+        setTimeout(() => liveNavRef.current?.start(), 300);
+        break;
+      case 'switch_to_floorplan':
+        setMode('floorplan');
+        handleReset();
+        break;
+      case 'run_pipeline':
+        setMode('floorplan');
+        // Ensure state settles before starting task
+        setTimeout(() => handleSubmit(), 50);
+        break;
+      case 'play_audio_guide':
+        if (result && result.tts_text) {
+          setActiveTab('audio');
+          speakText(result.tts_text);
+        }
+        break;
+      case 'stop_audio':
+        stopSpeech();
+        break;
+      case 'reset':
+        setMode('floorplan');
+        handleReset();
+        break;
+      case 'show_tactile':
+        if (result) setActiveTab('tactile');
+        break;
+      case 'show_screen_reader':
+        if (result) setActiveTab('screen');
+        break;
+      default:
+        console.log("Unmapped voice action:", action);
+        break;
+    }
+  };
+
   // ── Download helpers ───────────────────────────────────────────────────────
   const downloadBlob = (content, filename, mime) => {
     const url = URL.createObjectURL(new Blob([content], { type: mime }));
@@ -135,7 +180,7 @@ function App() {
       <main className="app-main">
 
         {/* ── Live Navigation mode ── */}
-        {mode === 'livenav' && <LiveNav />}
+        {mode === 'livenav' && <LiveNav ref={liveNavRef} />}
 
         {/* ── Floor Plan mode ── */}
         {mode === 'floorplan' && !result && (
@@ -313,6 +358,7 @@ function App() {
       <footer className="app-footer">
         <p>FloorSense AI · Built with FastAPI + React · Groq Vision · Web Speech API</p>
       </footer>
+      <VoiceBot onCommand={handleVoiceCommand} />
     </div>
   );
 }
