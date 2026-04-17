@@ -1,111 +1,167 @@
-import os
-import base64
-import io
-from typing import List
-from PIL import Image
+"""
+detection_service.py
 
+Uses Groq vision (llama-4-scout) to analyse live camera frames for:
+  - Object / obstacle detection  → run_detection()
+  - Indoor sign OCR              → run_ocr()
+
+Falls back to mock data when:
+  - DETECTION_MODE=mock
+  - GROQ_API_KEY is missing
+  - Groq returns an error
+"""
+
+import os
+import json
+import base64
+import httpx
 from app.models.detection_schemas import (
-    Detection, BoundingBox, DetectionResponse, OCRResponse
+    Detection, BoundingBox, DetectionResponse, OCRResponse,
 )
 
-# Object warning config — label → (warning_level, voice_message)
-OBJECT_CONFIG = {
-    "person":      ("high",   "Person ahead, move carefully"),
-    "chair":       ("high",   "Chair obstacle ahead"),
-    "stairs":      ("high",   "Stairs detected, proceed with caution"),
-    "door":        ("medium", "Door on your path"),
-    "elevator":    ("medium", "Elevator nearby"),
-    "lift":        ("medium", "Lift detected on your left"),
-    "exit":        ("medium", "Emergency exit detected"),
-    "table":       ("high",   "Table ahead, go around"),
-    "couch":       ("medium", "Furniture ahead"),
-    "bed":         ("medium", "Bed obstacle ahead"),
-    "toilet":      ("low",    "Washroom detected"),
-    "sink":        ("low",    "Sink detected"),
-    "tv":          ("low",    "Screen detected on wall"),
-    "laptop":      ("low",    "Laptop on surface nearby"),
-    "backpack":    ("medium", "Bag on floor ahead"),
-    "bottle":      ("low",    "Small object on surface"),
-    "clock":       ("low",    "Clock on wall"),
-    "potted plant":("medium", "Plant obstacle"),
+# ── Warning priority map ──────────────────────────────────────────────────────
+WARN_MAP = {
+    "person":        "high",
+    "chair":         "high",
+    "stairs":        "high",
+    "step":          "high",
+    "table":         "high",
+    "door":          "medium",
+    "elevator":      "medium",
+    "lift":          "medium",
+    "exit":          "medium",
+    "couch":         "medium",
+    "sofa":          "medium",
+    "furniture":     "medium",
+    "wall":          "medium",
+    "plant":         "medium",
+    "bin":           "medium",
+    "trolley":       "high",
+    "wheelchair":    "medium",
+    "toilet":        "low",
+    "sink":          "low",
+    "screen":        "low",
+    "laptop":        "low",
+    "bag":           "medium",
+    "bottle":        "low",
 }
 
-# ── Model caches ─────────────────────────────────────────────────────────────
+PRIORITY = {"high": 0, "medium": 1, "low": 2}
 
-_yolo_model = None
-_ocr_reader = None
+# ── Groq helper ───────────────────────────────────────────────────────────────
+
+def _groq_vision(prompt: str, base64_image: str, mime: str = "image/jpeg") -> str | None:
+    """Send one image + prompt to Groq vision. Returns raw text or None on error."""
+    key = os.environ.get("GROQ_API_KEY", "")
+    if not key:
+        return None
+    try:
+        resp = httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:{mime};base64,{base64_image}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }],
+                "temperature": 0.1,
+                "max_tokens": 512,
+            },
+            timeout=15.0,
+        )
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"[Groq vision] {e}")
+    return None
 
 
-def _get_yolo():
-    global _yolo_model
-    if _yolo_model is None:
-        from ultralytics import YOLO
-        _yolo_model = YOLO("yolov8n.pt")   # Nano — smallest & fastest
-    return _yolo_model
-
-
-def _get_ocr():
-    global _ocr_reader
-    if _ocr_reader is None:
-        import easyocr
-        _ocr_reader = easyocr.Reader(["en"], gpu=False)
-    return _ocr_reader
-
-
-# ── Image helpers ─────────────────────────────────────────────────────────────
-
-def _decode_image(base64_str: str) -> Image.Image:
-    if "," in base64_str:
-        base64_str = base64_str.split(",")[1]
-    return Image.open(io.BytesIO(base64.b64decode(base64_str)))
+def _strip_b64_header(data: str) -> tuple[str, str]:
+    """Return (base64_data, mime_type) stripping any data-URI header."""
+    if data.startswith("data:"):
+        header, data = data.split(",", 1)
+        mime = header.split(":")[1].split(";")[0]
+    else:
+        mime = "image/jpeg"
+    return data, mime
 
 
 # ── Detection ─────────────────────────────────────────────────────────────────
 
+_DETECT_PROMPT = """\
+You are an indoor obstacle detection AI for a visually impaired navigation assistant.
+Analyse the camera frame and identify every obstacle or object relevant to safe walking.
+
+Return ONLY valid JSON (no markdown) in this exact structure:
+{
+  "objects": [
+    {
+      "label": "chair",
+      "confidence": 0.92,
+      "warning_level": "high",
+      "position": "left",
+      "bbox": {"x1": 50, "y1": 200, "x2": 220, "y2": 420}
+    }
+  ],
+  "frame_width": 640,
+  "frame_height": 480
+}
+
+Rules:
+- bbox coordinates must be pixel values within the frame dimensions
+- warning_level: "high" (blocks path), "medium" (nearby hazard), "low" (informational)
+- position: "left", "center", or "right" based on horizontal centre of bbox
+- Only include objects with confidence >= 0.4
+- If the path is completely clear, return an empty objects array
+"""
+
 def run_detection(base64_image: str) -> DetectionResponse:
-    """
-    Run YOLOv8 Nano object detection.
-    Falls back to mock if DETECTION_MODE=mock or if ultralytics is unavailable.
-    """
     if os.getenv("DETECTION_MODE", "mock") == "mock":
         return _mock_detection()
 
-    try:
-        img = _decode_image(base64_image)
-        w, h = img.size
-        model = _get_yolo()
-        results = model(img, verbose=False)[0]
+    b64, mime = _strip_b64_header(base64_image)
+    raw = _groq_vision(_DETECT_PROMPT, b64, mime)
 
-        detections: List[Detection] = []
-        for box in results.boxes:
-            label = results.names[int(box.cls)].lower()
-            confidence = round(float(box.conf), 2)
-            if confidence < 0.4:
-                continue
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
-            warning, voice = OBJECT_CONFIG.get(label, ("low", f"{label} detected"))
-            detections.append(Detection(
-                label=label,
-                confidence=confidence,
-                bbox=BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2),
-                warning_level=warning,
-                voice_message=voice,
-            ))
+    if raw:
+        try:
+            raw_clean = raw.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw_clean)
+            fw = int(data.get("frame_width", 640))
+            fh = int(data.get("frame_height", 480))
 
-        # Sort: high warnings first
-        priority = {"high": 0, "medium": 1, "low": 2}
-        detections.sort(key=lambda d: priority.get(d.warning_level, 3))
+            detections = []
+            for obj in data.get("objects", []):
+                label      = str(obj.get("label", "object")).lower()
+                confidence = float(obj.get("confidence", 0.8))
+                warn       = obj.get("warning_level") or WARN_MAP.get(label, "medium")
+                bbox_raw   = obj.get("bbox", {})
+                bbox = BoundingBox(
+                    x1=float(bbox_raw.get("x1", 0)),
+                    y1=float(bbox_raw.get("y1", 0)),
+                    x2=float(bbox_raw.get("x2", fw // 2)),
+                    y2=float(bbox_raw.get("y2", fh // 2)),
+                )
+                pos = obj.get("position", "ahead")
+                detections.append(Detection(
+                    label=label,
+                    confidence=confidence,
+                    bbox=bbox,
+                    warning_level=warn,
+                    voice_message=f"{label} {pos}",
+                ))
 
-        return DetectionResponse(
-            detections=detections,
-            frame_width=w,
-            frame_height=h,
-            mode="real",
-        )
+            detections.sort(key=lambda d: PRIORITY.get(d.warning_level, 3))
+            return DetectionResponse(detections=detections, frame_width=fw, frame_height=fh, mode="real")
 
-    except Exception as e:
-        print(f"[Detection] Error: {e} — falling back to mock")
-        return _mock_detection()
+        except Exception as e:
+            print(f"[Detection] Parse error: {e} — falling back to mock")
+
+    return _mock_detection()
 
 
 def _mock_detection() -> DetectionResponse:
@@ -134,27 +190,37 @@ def _mock_detection() -> DetectionResponse:
 
 # ── OCR ───────────────────────────────────────────────────────────────────────
 
+_OCR_PROMPT = """\
+You are an indoor sign reader for a visually impaired navigation assistant.
+Read every piece of visible text in this image — room numbers, department signs,
+exit labels, warning signs, door labels, and any other signage.
+
+Return ONLY valid JSON (no markdown):
+{
+  "texts": ["Lab 401", "Emergency Exit →", "Radiology Department"]
+}
+
+If no text is visible, return: {"texts": []}
+"""
+
 def run_ocr(base64_image: str) -> OCRResponse:
-    """
-    Run EasyOCR to read indoor signage.
-    Falls back to mock if DETECTION_MODE=mock or if easyocr is unavailable.
-    """
     if os.getenv("DETECTION_MODE", "mock") == "mock":
         return _mock_ocr()
 
-    try:
-        img = _decode_image(base64_image)
-        reader = _get_ocr()
-        results = reader.readtext(img)
+    b64, mime = _strip_b64_header(base64_image)
+    raw = _groq_vision(_OCR_PROMPT, b64, mime)
 
-        texts = [text for (_, text, conf) in results if conf > 0.4]
-        combined = ". ".join(texts) if texts else ""
+    if raw:
+        try:
+            raw_clean = raw.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw_clean)
+            texts    = [str(t) for t in data.get("texts", [])]
+            combined = ". ".join(texts)
+            return OCRResponse(texts=texts, combined=combined, mode="real")
+        except Exception as e:
+            print(f"[OCR] Parse error: {e} — falling back to mock")
 
-        return OCRResponse(texts=texts, combined=combined, mode="real")
-
-    except Exception as e:
-        print(f"[OCR] Error: {e} — falling back to mock")
-        return _mock_ocr()
+    return _mock_ocr()
 
 
 def _mock_ocr() -> OCRResponse:
