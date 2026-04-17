@@ -23,10 +23,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(pipeline.router)
-app.include_router(live_nav.router)
-app.include_router(health.router)
-app.include_router(voice_control.router)
+app.include_router(pipeline.router,      prefix="/api")
+app.include_router(live_nav.router,      prefix="/api")
+app.include_router(health.router,        prefix="/api")
+app.include_router(voice_control.router, prefix="/api")
 
 
 @app.get("/")
